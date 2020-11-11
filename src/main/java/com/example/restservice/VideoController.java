@@ -1,17 +1,19 @@
 package com.example.restservice;
 
 import com.google.gson.Gson;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.core.io.FileSystemResource;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -20,6 +22,7 @@ public class VideoController {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 	Gson gson;
+	Logger logger = LoggerFactory.getLogger(VideoController.class);
 	VideoController() {
 		gson = new Gson();
 	}
@@ -30,10 +33,11 @@ public class VideoController {
         video_view(name,length,id,created_at,updated_at,deleted_at,aweme_id,author_id,nickname,avatar,"desc",digg_count,comment_count,cover_path,video_path,share_url,is_download,status)'
          */
 
-		List<Video> videos = jdbcTemplate.query("SELECT name, nickname, desc, video_path, cover_path FROM video_view",
+		List<Video> videos = jdbcTemplate.query("SELECT name, length, nickname, desc, video_path, cover_path FROM video_view",
 				(resultSet, rowNum) ->
 				{
 					return new Video(resultSet.getString("name"),
+							resultSet.getString("length"),
 							resultSet.getString("nickname"),
 							resultSet.getString("desc"),
 							resultSet.getString("video_path"),
@@ -43,8 +47,17 @@ public class VideoController {
 		return  videos;
 	}
 
+	Map<String, Video> getVideoMap() {
+		List<Video> videoList = getVideos();
+		Map<String, Video> ans = new HashMap<>();
+		for (Video v : videoList) {
+			ans.put(v.name, v);
+		}
+		return ans;
+	}
+
 	@GetMapping("/video")
-	public ResponseEntity<FileSystemResource> getVideo(@RequestParam(value = "name") String name) {
+	public ResponseEntity<FileSystemResource> getVideo(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "name") String name) {
 		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
 		File file = new File(videoRoot + name);
 		FileSystemResource fileResource = new FileSystemResource(file);
@@ -56,13 +69,14 @@ public class VideoController {
 		} else {
 			mimeType = "application/octet-stream";
 		}
+		logger.info("getVideo " + id + " " + getVideoMap().get(name));
 		return ResponseEntity.ok()
 				.header("Content-Disposition", "attachment; filename="+name)
 				.contentType(MediaType.valueOf(mimeType)).body(fileResource);
 	}
 
 	@GetMapping("/cover")
-	public ResponseEntity<FileSystemResource> getCover(@RequestParam(value = "name") String name) {
+	public ResponseEntity<FileSystemResource> getCover(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "name") String name) {
 		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
 		name = name.replace(".mp4", ".mp4.jpeg");
 		File file = new File(videoRoot + name);
@@ -74,12 +88,14 @@ public class VideoController {
 	}
 
 	@GetMapping("/recommendvideo")
-	public String getRecommendVideo(@RequestParam(value = "limits", defaultValue = "15" ) String limits) {
-		return gson.toJson(getRandomElement(getVideos(), Integer.valueOf(limits)));
+	public String getRecommendVideo(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "limits", defaultValue = "15" ) String limits) {
+		List<Video> ret = getRandomElement(getVideos(), Integer.valueOf(limits));
+		logger.info("getRecommendVideo " + id + " " + ret);
+		return gson.toJson(ret);
 	}
 
 	@GetMapping("/videoinfo")
-	public String getVideoInfo(@RequestParam(value = "name", defaultValue = "" ) String name) {
+	public String getVideoInfo(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "name", defaultValue = "" ) String name) {
 		return gson.toJson(getVideos());
 	}
 

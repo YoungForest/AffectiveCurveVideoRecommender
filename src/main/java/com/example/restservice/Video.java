@@ -1,14 +1,16 @@
 package com.example.restservice;
 
 public class Video {
-    private String name;
-    private String nickName;
-    private String videoPath;
-    private String coverPath;
-    private String description;
+    public String name;
+    public int length;
+    public String nickName;
+    public String videoPath;
+    public String coverPath;
+    public String description;
 
-    Video (String _name, String _nickname, String _description, String _videoPath, String _coverPath) {
+    Video (String _name, String _length, String _nickname, String _description, String _videoPath, String _coverPath) {
         name = _name;
+        length = Integer.valueOf(_length);
         nickName = _nickname;
         description = _description;
         videoPath = _videoPath;
@@ -18,6 +20,7 @@ public class Video {
     @Override
     public String toString() {
         return "Video [name=" + name
+                + ", length=" + length
                 + ", nickname=" + nickName
                 + ", description=" + description
                 + ", videoPath=" + videoPath
