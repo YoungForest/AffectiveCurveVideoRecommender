@@ -1,6 +1,8 @@
 package com.example.restservice;
 
 import com.google.gson.Gson;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,10 +44,33 @@ public class VideoController {
 	}
 
 	@GetMapping("/video")
-	public FileSystemResource getVideo(@RequestParam(value = "name") String name) {
+	public ResponseEntity<FileSystemResource> getVideo(@RequestParam(value = "name") String name) {
 		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
 		File file = new File(videoRoot + name);
-		return new FileSystemResource(file);
+		FileSystemResource fileResource = new FileSystemResource(file);
+		String mimeType;
+		if (name.contains(".mp4")) {
+			mimeType = "video/mp4";
+		} else if (name.contains(".jpeg")) {
+			mimeType = "image/jpg";
+		} else {
+			mimeType = "application/octet-stream";
+		}
+		return ResponseEntity.ok()
+				.header("Content-Disposition", "attachment; filename="+name)
+				.contentType(MediaType.valueOf(mimeType)).body(fileResource);
+	}
+
+	@GetMapping("/cover")
+	public ResponseEntity<FileSystemResource> getCover(@RequestParam(value = "name") String name) {
+		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
+		name = name.replace(".mp4", ".mp4.jpeg");
+		File file = new File(videoRoot + name);
+		FileSystemResource fileResource = new FileSystemResource(file);
+		String mimeType = "image/jpg";
+		return ResponseEntity.ok()
+				.header("Content-Disposition", "attachment; filename="+name)
+				.contentType(MediaType.valueOf(mimeType)).body(fileResource);
 	}
 
 	@GetMapping("/recommendvideo")
@@ -67,7 +92,7 @@ public class VideoController {
 
 		// create a temporary list for storing
 		// selected element
-		List<Integer> newList = new ArrayList<>();
+		List<Video> newList = new ArrayList<>();
 		for (int i = 0; i < totalItems; i++) {
 
 			// take a raundom index between 0 to size
