@@ -1,8 +1,13 @@
 package com.example.restservice;
 
+import com.fastdtw.timeseries.TimeSeries;
+import com.fastdtw.timeseries.TimeSeriesBase;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.sun.tools.javac.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,7 +18,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.core.io.FileSystemResource;
 import java.io.File;
+import java.io.Reader;
+import java.lang.reflect.Type;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
+import com.fastdtw.dtw.FastDTW;
+import com.fastdtw.util.Distances;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -23,8 +34,52 @@ public class VideoController {
 	private JdbcTemplate jdbcTemplate;
 	Gson gson;
 	Logger logger = LoggerFactory.getLogger(VideoController.class);
+	Map<String, Set<Video>> user2seen;
+	Map<Pair<String, String>, Double> distanceBetweenVideos;
+	Map<String, List<List<Double>>> affectiveCurveMap;
+	@Value("${recommend.mode}")
+	private String recommendMode;
 	VideoController() {
+		user2seen = new HashMap<>();
 		gson = new Gson();
+		distanceBetweenVideos = new HashMap<>();
+		Gson affectiveCurve = new Gson();
+		try {
+			Reader reader = Files.newBufferedReader(Paths.get("src/main/resources/predict-douyin-VA-video.json"));
+			Type videoMapType = new TypeToken<Map<String, List<List<Double>>>>() {}.getType();
+			affectiveCurveMap = gson.fromJson(reader, videoMapType);
+			System.out.println(affectiveCurve);
+			for (Map.Entry<String, List<List<Double>>> entry : affectiveCurveMap.entrySet()) {
+				System.out.println(entry.getKey() + "=" + entry.getValue());
+				for (List<Double> l : entry.getValue()) {
+					for (Double d : l) {
+						System.out.println(d);
+					}
+				}
+			}
+			for (Map.Entry<String, List<List<Double>>> entry : affectiveCurveMap.entrySet()) {
+				TimeSeries t1 = getTimeSeriesFromListDouble(entry.getValue());
+				for (Map.Entry<String, List<List<Double>>> entry2 : affectiveCurveMap.entrySet()) {
+					TimeSeries t2 = getTimeSeriesFromListDouble(entry2.getValue());
+					double distance = FastDTW.compare(t1, t2, 3, Distances.EUCLIDEAN_DISTANCE)
+							.getDistance();
+					distanceBetweenVideos.put(new Pair<String, String>(entry.getKey(), entry2.getKey()), distance);
+				}
+			}
+			reader.close();
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+
+	TimeSeries getTimeSeriesFromListDouble (List<List<Double>> curve){
+		TimeSeriesBase.Builder tb = TimeSeriesBase.builder();
+		int s1 = curve.get(0).size();
+		for (int i = 0; i < s1; ++i) {
+			tb.add(curve.get(0).get(i),curve.get(1).get(i));
+		}
+		TimeSeries ts = tb.build();
+		return ts;
 	}
 
 	List<Video> getVideos() {
@@ -33,7 +88,7 @@ public class VideoController {
         video_view(name,length,id,created_at,updated_at,deleted_at,aweme_id,author_id,nickname,avatar,"desc",digg_count,comment_count,cover_path,video_path,share_url,is_download,status)'
          */
 
-		List<Video> videos = jdbcTemplate.query("SELECT name, length, nickname, desc, video_path, cover_path FROM video_view",
+		List<Video> videos = jdbcTemplate.query("SELECT name, length, nickname, desc, video_path, cover_path FROM video_view where cover_path is not null ",
 				(resultSet, rowNum) ->
 				{
 					return new Video(resultSet.getString("name"),
@@ -69,7 +124,10 @@ public class VideoController {
 		} else {
 			mimeType = "application/octet-stream";
 		}
-		logger.info("getVideo " + id + " " + getVideoMap().get(name));
+		Video ret = getVideoMap().get(name);
+		if (!user2seen.containsKey(id)) user2seen.put(id, new HashSet<>());
+		user2seen.get(id).add(ret);
+		logger.info("getVideo " + id + " " + ret);
 		return ResponseEntity.ok()
 				.header("Content-Disposition", "attachment; filename="+name)
 				.contentType(MediaType.valueOf(mimeType)).body(fileResource);
@@ -89,7 +147,41 @@ public class VideoController {
 
 	@GetMapping("/recommendvideo")
 	public String getRecommendVideo(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "limits", defaultValue = "15" ) String limits) {
-		List<Video> ret = getRandomElement(getVideos(), Integer.valueOf(limits));
+		List<Video> ret;
+		int limit = Integer.valueOf(limits);
+		logger.info("Seen records: ", user2seen.get(id));
+		if (user2seen.get(id) == null) {
+			logger.info("user2seen.get(id) is null");
+		}
+		Set<Video> seen = user2seen.get(id);
+		if (recommendMode.equals("affective") && seen != null) {
+			logger.info("Affective recommend.");
+			// calculate sum distance to seen videos, pick the closest candidates
+			Map<String, Double> distance = new HashMap<>();
+			List<Video> candidates = getVideos();
+			for (Video v : candidates) {
+				distance.put(v.name, 0.0);
+				for (Video see : seen) {
+					distance.put(v.name, distance.get(v.name) + distanceBetweenVideos.get(new Pair<>(v.name, see.name)));
+				}
+			}
+			candidates.sort((Video v1, Video v2) -> distance.get(v1.name).compareTo(distance.get(v2.name)));
+			ret = new ArrayList<>();
+			int j = 0;
+			// pick 5 more video than needed
+			for (int i = 0; j < limit + 5 && i < candidates.size(); ++i) {
+				Video x = candidates.get(i);
+				if (seen.contains(x)) continue;
+				else {
+					ret.add(x);
+					++j;
+				}
+			}
+			ret = getRandomElement(ret, limit);	// random resort
+		} else {
+			logger.info("Random recommend.");
+			ret = getRandomElement(getVideos(), limit);
+		}
 		logger.info("getRecommendVideo " + id + " " + ret);
 		return gson.toJson(ret);
 	}
