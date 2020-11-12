@@ -4,7 +4,7 @@ import com.fastdtw.timeseries.TimeSeries;
 import com.fastdtw.timeseries.TimeSeriesBase;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.sun.tools.javac.util.Pair;
+import javafx.util.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +39,8 @@ public class VideoController {
 	Map<String, List<List<Double>>> affectiveCurveMap;
 	@Value("${recommend.mode}")
 	private String recommendMode;
+	@Value("${video.root}")
+	private String videoRoot;
 	VideoController() {
 		user2seen = new HashMap<>();
 		gson = new Gson();
@@ -113,7 +115,6 @@ public class VideoController {
 
 	@GetMapping("/video")
 	public ResponseEntity<FileSystemResource> getVideo(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "name") String name) {
-		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
 		File file = new File(videoRoot + name);
 		FileSystemResource fileResource = new FileSystemResource(file);
 		String mimeType;
@@ -135,7 +136,6 @@ public class VideoController {
 
 	@GetMapping("/cover")
 	public ResponseEntity<FileSystemResource> getCover(@RequestParam(value = "id", defaultValue = "NoneId") String id, @RequestParam(value = "name") String name) {
-		final String videoRoot = "/Users/yngsen/workspace/bishe-spider/douyin/";
 		name = name.replace(".mp4", ".mp4.jpeg");
 		File file = new File(videoRoot + name);
 		FileSystemResource fileResource = new FileSystemResource(file);
