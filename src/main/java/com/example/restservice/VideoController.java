@@ -127,8 +127,15 @@ public class VideoController {
 		}
 		Video ret = getVideoMap().get(name);
 		if (!user2seen.containsKey(id)) user2seen.put(id, new HashSet<>());
-		user2seen.get(id).add(ret);
+		Set<Video> seen = user2seen.get(id);
+		seen.add(ret);
 		logger.info("getVideo " + id + " " + ret);
+		int timeTotal = 0;
+		for (Video v : seen) {
+			timeTotal += v.length;
+		}
+		logger.info("user2seen " + id + " " + seen + " seen_length: " + seen.size() + " time_total: " + timeTotal);
+
 		return ResponseEntity.ok()
 				.header("Content-Disposition", "attachment; filename="+name)
 				.contentType(MediaType.valueOf(mimeType)).body(fileResource);
